@@ -1,11 +1,12 @@
 from mongoengine import Document
 from mongoengine.queryset import DO_NOTHING
+from nefertari.engine.common import MultiEngineMeta
 
-from .signals import setup_es_signals_for
+from .signals import setup_signals_for
 from .fields import ReferenceField, RelationshipField
 
 
-class DocumentMetaclass(Document.my_metaclass):
+class DocumentMetaclass(MultiEngineMeta, Document.my_metaclass):
     """ Custom metaclass that supports backreferences generation.
 
     The feature of this metaclass is that it creates a backreference
@@ -27,12 +28,12 @@ class DocumentMetaclass(Document.my_metaclass):
     creation works. Check `mongoengine/base/metaclasses.py` for the original
     code of this metaclass.
     """
-
     def __init__(self, name, bases, attrs):
-        """ Override new class initialization to create backreferences.
-
-        """
+        """ Override new class initialization to create backreferences. """
         super(DocumentMetaclass, self).__init__(name, bases, attrs)
+        if self._sync_events:
+            setup_signals_for(self)
+
         for field_name, field in self._fields.items():
 
             # Field is not a relationship field
@@ -52,6 +53,7 @@ class DocumentMetaclass(Document.my_metaclass):
             # Create backref ReferenceField. Set its name and `db_field` prop
             backref_field = ReferenceField(**backref_kw)
             backref_field.name = backref_name
+            backref_field._is_backref = True
             if not backref_field.db_field:
                 backref_field.db_field = backref_name
 
@@ -73,8 +75,8 @@ class DocumentMetaclass(Document.my_metaclass):
             # Add new field to `_fields_ordered`
             if (backref_name in target_cls._fields and
                     backref_name not in target_cls._fields_ordered):
-                fields = list(target_cls._fields_ordered) + [backref_name]
-                target_cls._fields_ordered = sorted(fields)
+                fields = target_cls._fields_ordered + (backref_name,)
+                target_cls._fields_ordered = fields
 
             # Set new field as an attribute of target class
             setattr(target_cls, backref_name, backref_field)
@@ -87,10 +89,3 @@ class DocumentMetaclass(Document.my_metaclass):
                     target_cls,
                     backref_name,
                     delete_rule)
-
-
-class ESMetaclass(DocumentMetaclass):
-    def __init__(self, name, bases, attrs):
-        self._index_enabled = True
-        setup_es_signals_for(self)
-        return super(ESMetaclass, self).__init__(name, bases, attrs)

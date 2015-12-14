@@ -3,10 +3,9 @@ import logging
 import mongoengine
 
 from .documents import (
-    BaseDocument, ESBaseDocument, BaseMixin,
+    BaseDocument, BaseMixin,
     get_document_cls, get_document_classes)
-from .serializers import JSONEncoder, ESJSONSerializer
-from .metaclasses import ESMetaclass
+from .serializers import JSONEncoder
 from .utils import (
     relationship_fields, is_relationship_field,
     get_relationship_cls)
@@ -59,7 +58,6 @@ __all__ = [
     'ListField',
     'DictField',
     'BaseDocument',
-    'ESBaseDocument',
     'BaseMixin',
     'get_document_cls',
     'get_document_classes',
@@ -67,10 +65,8 @@ __all__ = [
     'is_relationship_field',
     'get_relationship_cls',
     'JSONEncoder',
-    'ESJSONSerializer',
-    'ESMetaclass',
     'setup_database',
-    ]
+]
 
 log = logging.getLogger(__name__)
 

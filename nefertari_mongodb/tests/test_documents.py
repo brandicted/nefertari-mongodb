@@ -69,7 +69,6 @@ class TestBaseMixin(object):
         class MyModel(docs.BaseDocument):
             _nested_relationships = ['parent']
             _nesting_depth = 0
-            my_id = fields.IdField()
             name = fields.StringField(primary_key=True)
             status = fields.ChoiceField(choices=['active'])
             groups = fields.ListField(item_type=fields.IntegerField)
@@ -89,7 +88,6 @@ class TestBaseMixin(object):
                     '_pk': {'type': 'string'},
                     '_version': {'type': 'long'},
                     'groups': {'type': 'long'},
-                    'my_id': {'type': 'string'},
                     'name': {'type': 'string'},
                     'parent': {'type': 'string'},
                     'status': {'type': 'string'},
@@ -113,9 +111,33 @@ class TestBaseMixin(object):
             }
         }
 
+    def test_get_fields_creators(self):
+        class Department(docs.BaseDocument):
+            __tablename__ = 'department'
+            id = fields.IdField(primary_key=True)
+            company_id = fields.ForeignKeyField(
+                ref_document='Company', ref_column='company.id',
+                ref_column_type=fields.IdField)
+
+        class Company(docs.BaseDocument):
+            __tablename__ = 'company'
+            id = fields.IdField(primary_key=True)
+            departments = fields.Relationship(
+                document='Department', backref_name='company')
+
+        dep_fields = Department._get_fields_creators()
+        assert set(dep_fields.keys()) == {
+            'id', '_version', 'company_id'}
+        assert dep_fields['id'] is fields.IdField
+        assert dep_fields['company_id'] is fields.ForeignKeyField
+
+        parent_fields = Company._get_fields_creators()
+        assert set(parent_fields.keys()) == {'id', '_version', 'departments'}
+        assert parent_fields['id'] is fields.IdField
+        assert parent_fields['departments'] is fields.Relationship
+
     def test_pk_field(self):
         class MyModel(docs.BaseDocument):
-            my_id = fields.IdField()
             name = fields.StringField(primary_key=True)
 
         assert MyModel.pk_field() == 'name'
@@ -205,6 +227,18 @@ class TestBaseMixin(object):
 
 
 class TestBaseDocument(object):
+
+    def test_is_abstract(self):
+        class MyModel(docs.BaseDocument):
+            meta = {'abstract': True}
+            name = fields.StringField()
+
+        assert MyModel._is_abstract()
+
+        class MyModel2(MyModel):
+            pass
+
+        assert not MyModel2._is_abstract()
 
     def test_init_created_with_invalid_fields(self):
         class MyModel(docs.BaseDocument):

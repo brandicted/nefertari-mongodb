@@ -8,15 +8,18 @@ from nefertari.json_httpexceptions import (
     JHTTPBadRequest, JHTTPNotFound, JHTTPConflict)
 from nefertari.utils import (
     process_fields, process_limit, _split, dictset, drop_reserved_params)
-from .metaclasses import ESMetaclass, DocumentMetaclass
+from nefertari.engine.common import MultiEngineDocMixin
+
+from .metaclasses import DocumentMetaclass
 from .signals import on_bulk_update
+from .utils import relationship_fields
 from .fields import (
     DateTimeField, IntegerField, ForeignKeyField, RelationshipField,
     DictField, ListField, ChoiceField, ReferenceField, StringField,
     TextField, UnicodeField, UnicodeTextField,
     IdField, BooleanField, BinaryField, DecimalField, FloatField,
     BigIntegerField, SmallIntegerField, IntervalField, DateField,
-    TimeField, BaseFieldMixin
+    TimeField, BaseFieldMixin, Relationship
 )
 
 
@@ -94,6 +97,8 @@ class BaseMixin(object):
     """ Represents mixin class for models.
 
     Attributes:
+        _sync_events: Boolean indicating whether sync events should be
+            triggered on model instances change.
         _auth_fields: String names of fields meant to be displayed to
             authenticated users.
         _public_fields: String names of fields meant to be displayed to
@@ -108,13 +113,13 @@ class BaseMixin(object):
             Defaults to 1(one) which makes only one level of relationship
             nested.
     """
-    _public_fields = None
+    _sync_events = True
     _auth_fields = None
+    _public_fields = None
     _hidden_fields = None
     _nested_relationships = ()
     _backref_hooks = ()
     _nesting_depth = 1
-
     _type = property(lambda self: self.__class__.__name__)
     Q = mongo.Q
 
@@ -181,6 +186,32 @@ class BaseMixin(object):
 
         cls._generate_on_creation = classmethod(generate)
         signals.post_save.connect(cls._generate_on_creation, sender=model)
+
+    @classmethod
+    def _get_fields_creators(cls):
+        """ Return map of field creator classes/functions.
+
+        Map consists of:
+            field name: String name of a field
+            field creator: Class/func that may be run to create new
+                instance of such field. Note that these are classes that
+                create fields, not classes of created fields. E.g.
+                "Relationship" func instead of "ReferenceField".
+
+        Does not return backref relationship fields.
+        """
+        fields = cls._fields.copy()
+        backrefs = [
+            key for key, val in fields.items()
+            if (isinstance(val, relationship_fields) and
+                getattr(val, '_is_backref', False))]
+        fields = {key: type(val) for key, val in fields.items()}
+        for key in fields:
+            if fields[key] in relationship_fields:
+                fields[key] = Relationship
+        for name in backrefs:
+            fields.pop(name, None)
+        return fields
 
     @classmethod
     def pk_field(cls):
@@ -373,13 +404,13 @@ class BaseMixin(object):
         return uniques + pk_field
 
     @classmethod
-    def get_or_create(cls, **params):
+    def get_or_create(cls, request=None, **params):
         defaults = params.pop('defaults', {})
         try:
             return cls.objects.get(**params), False
         except mongo.queryset.DoesNotExist:
             defaults.update(params)
-            return cls(**defaults).save(), True
+            return cls(**defaults).save(request=request), True
         except mongo.queryset.MultipleObjectsReturned:
             raise JHTTPBadRequest('Bad or Insufficient Params')
 
@@ -619,7 +650,7 @@ class BaseMixin(object):
         with_objs = dict([[str(wth.id), wth] for wth in with_objs])
 
         params['%s__in' % join_on] = list(with_objs.keys())
-        objs = cls.get_collection(**params)
+        objs = cls.get_collection(_query_secondary=False, **params)
 
         for ob in objs:
             ob._data[attr_name] = with_objs[getattr(ob, join_on)]
@@ -654,13 +685,19 @@ class BaseMixin(object):
                 continue
 
 
-class BaseDocument(six.with_metaclass(DocumentMetaclass,
-                                      BaseMixin, mongo.Document)):
+class BaseDocument(six.with_metaclass(
+        DocumentMetaclass,
+        MultiEngineDocMixin, BaseMixin, mongo.Document)):
     _version = IntegerField(default=0)
 
     meta = {
         'abstract': True,
     }
+
+    @classmethod
+    def _is_abstract(cls):
+        meta = getattr(cls, '_meta', {})
+        return meta.get('abstract', False)
 
     def __init__(self, *args, **values):
         """ Override init to filter out invalid fields from :values:.
@@ -766,10 +803,3 @@ class BaseDocument(six.with_metaclass(DocumentMetaclass,
         for field_name, field_obj in self._fields.items():
             if isinstance(field_obj, BaseFieldMixin):
                 field_obj.clean(self)
-
-
-class ESBaseDocument(six.with_metaclass(ESMetaclass, BaseDocument)):
-    """ Base for document classes which should be indexed by ES. """
-    meta = {
-        'abstract': True,
-    }

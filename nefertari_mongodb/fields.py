@@ -360,8 +360,9 @@ class IdField(BaseFieldMixin, fields.ObjectIdField):
     _valid_kwargs = ('primary_key',)
 
     def __init__(self, *args, **kwargs):
-        kwargs.pop('primary_key', None)
         super(IdField, self).__init__(*args, **kwargs)
+        if self.primary_key:
+            self.required = False
 
 
 class ForeignKeyField(BaseFieldMixin, fields.StringField):
