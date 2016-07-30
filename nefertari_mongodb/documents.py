@@ -532,6 +532,9 @@ class BaseMixin(object):
             pos_keys = []
 
             for key in keys:
+                if isinstance(key,dict):
+                   pos_keys.append(key)
+                   continue
                 if key.startswith('__'):
                     continue
                 if key.startswith('-'):
@@ -540,9 +543,8 @@ class BaseMixin(object):
                     pos_keys.append(key.strip())
             return pos_keys, neg_keys
 
-        def update_dict(update_params):
-            final_value = getattr(self, attr, {}) or {}
-            final_value = final_value.copy()
+        def update_dict_params(update_params,final_value):
+
             if update_params is None or update_params == '':
                 if not final_value:
                     return
@@ -557,7 +559,12 @@ class BaseMixin(object):
             # Set positive keys
             for key in positive:
                 final_value[str(key)] = update_params[key]
+            return final_value
 
+        def update_dict(update_params):
+            final_value = getattr(self, attr, {}) or {}
+            final_value = final_value.copy()
+            final_value=update_dict_params(update_params,final_value)
             setattr(self, attr, final_value)
             if save:
                 self.save(request)
@@ -573,6 +580,9 @@ class BaseMixin(object):
                 keys = list(update_params.keys())
             else:
                 keys = update_params
+            for idx,key in enumerate(keys):
+                if isinstance(key,dict):
+                    keys[idx] = update_dict_params(update_params=key,final_value=getattr(self,attr)[idx])
 
             positive, negative = split_keys(keys)
 
@@ -590,6 +600,12 @@ class BaseMixin(object):
             setattr(self, attr, final_value)
             if save:
                 self.save(request)
+
+        if is_dict:
+            update_dict(params)
+
+        elif is_list:
+            update_list(params)
 
         if is_dict:
             update_dict(params)
