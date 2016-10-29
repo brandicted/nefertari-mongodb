@@ -83,6 +83,6 @@ def includeme(config):
 def setup_database(config):
     """ Setup db engine and db itself. Create db if it doesn't exist. """
     settings = config.registry.settings
-    mongoengine.connect(settings['mongodb.db'],
-                        host=settings['mongodb.host'],
-                        port=int(settings['mongodb.port']))
+    connect_settings = dict((k[8:], settings[k]) for k in settings if k.startswith('mongodb.') and k != 'mongodb.db')
+    connect_settings['port'] = int(connect_settings['port'])
+    mongoengine.connect(settings['mongodb.db'],**connect_settings)
