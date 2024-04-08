@@ -4,7 +4,7 @@ install_requires = [
     'elasticsearch',
     'mongoengine==0.9',
     'nefertari>=0.7.0',
-    'pymongo==2.8',
+    'pymongo==4.6.3',
     'pyramid_tm',
     'python-dateutil',
     'six',
